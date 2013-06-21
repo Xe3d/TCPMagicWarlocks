@@ -11,6 +11,11 @@ using Microsoft.Xna.Framework.Media;
 using TestGame.TileEngine;
 using tools_spritesheet;
 using MagicWarlock.Classes.Other;
+using System.Net;
+using System.Net.Sockets;
+using System.Windows;
+using System.Windows.Forms;
+using System.IO;
 
 namespace MagicWarlock
 {
@@ -32,7 +37,7 @@ namespace MagicWarlock
 
         
     //Keyboardstate
-        KeyboardState keyboard;
+        KeyboardState keyboard, prevKeyboard;
 
         //initierar en gamestate variabel
         GameStates GameState;
@@ -96,6 +101,22 @@ namespace MagicWarlock
         #endregion
 
 
+
+        #region Network
+
+        TcpClient client;
+
+        String IP = "127.0.0.1";
+        int PORT = 1490;
+        int BUFFER_SIZE = 2048;
+        byte[] readBuffer;
+
+        MemoryStream readStream;
+        BinaryReader reader;
+
+        #endregion
+
+
         public Game1()
         {
             //initierar en ny GraphicsDeviceManger som heter graphics
@@ -115,6 +136,18 @@ namespace MagicWarlock
         {
             // TODO: Add your initialization logic here
 
+            #region Network
+            client = new TcpClient();
+            client.NoDelay = true;
+         //   client.Connect(IP, PORT);
+
+            readBuffer = new byte[BUFFER_SIZE];
+         //   client.GetStream().BeginRead(readBuffer, 0, BUFFER_SIZE, StreamReceived, null);
+
+            readStream = new MemoryStream();
+
+            reader = new BinaryReader(readStream);
+            #endregion
             //kallar Microsoft.Xna.Framework.Game.Initialize
             base.Initialize();
         }
@@ -252,14 +285,28 @@ namespace MagicWarlock
 
 
             //stänger ner spelet om Back knappen trycks på en spelkontroll eller Escape på ett tangentbord 
-            if ((GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed)||keyboard.IsKeyDown(Keys.Escape))
+            if ((GamePad.GetState(PlayerIndex.One).Buttons.Back == Microsoft.Xna.Framework.Input.ButtonState.Pressed)||keyboard.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Escape))
                 this.Exit();
 
             //om enter trycks ned och gameState inte är på playScreen, sätt gameState till playScreen och kör setUp-funktionen
-            if (keyboard.IsKeyDown(Keys.Enter)&&(GameState !=GameStates.playScreen))
+            if (keyboard.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Enter)&&(GameState !=GameStates.playScreen))
             {
                 GameState = GameStates.playScreen;
                 setUp();
+                
+            }
+
+            if (keyboard.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.C) && !prevKeyboard.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.C)&&!client.Connected)
+            {
+                client.Connect(IP, PORT);
+                client.GetStream().BeginRead(readBuffer, 0, BUFFER_SIZE, StreamReceived, null);
+            }
+
+            if (keyboard.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.D) && !prevKeyboard.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.D) && client.Connected)
+            {
+                
+                
+             //   client.Close();
                 
             }
 
@@ -267,11 +314,11 @@ namespace MagicWarlock
             if (GameState == GameStates.playScreen)
             {
                 //om höger musknapp trycks ner, säg åt spelaren att gå till musens koordinater genom PlayerManager.goTo funktionen
-                if (mouse.RightButton == ButtonState.Pressed)
+                if (mouse.RightButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed)
                     Player.goTo(new Vector2(mouse.X, mouse.Y));
 
                 //om vänster musknapp trycks ner, säg åt spelaren att skjuta mot musens koordinater genom PlayerManager.FireShot funktionen
-                if (mouse.LeftButton == ButtonState.Pressed)
+                if (mouse.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed)
                 {
                     Player.FireShot(new Vector2(mouse.X, mouse.Y));
                 }
@@ -321,9 +368,88 @@ namespace MagicWarlock
                 tempEnemyLife = 0;
             }
 
+            prevKeyboard = keyboard;
             //kallar Microsoft.Xna.Framework.Game.Update
             base.Update(gameTime);
         }
+
+
+
+#region Network
+
+        private void StreamReceived(IAsyncResult ar)
+        {
+            if (client.Connected)
+            {
+                int bytesRead = 0;
+
+                try
+                {
+                    lock (client.GetStream())
+                    {
+                        bytesRead = client.GetStream().EndRead(ar);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message);
+                }
+
+                if (bytesRead == 0)
+                {
+                    client.Close();
+                    return;
+                }
+
+                byte[] data = new byte[bytesRead];
+
+                for (int i = 0; i < bytesRead; i++)
+                {
+                    data[i] = readBuffer[i];
+
+                }
+
+                ProcessData(data);
+
+                client.GetStream().BeginRead(readBuffer, 0, BUFFER_SIZE, StreamReceived, null);
+            }
+        }
+        
+        
+        private void ProcessData(byte[] data)
+        {
+            readStream.SetLength(0);
+            readStream.Position = 0;
+
+            readStream.Write(data, 0, data.Length);
+            readStream.Position = 0;
+
+            Protocol p;
+
+            try
+            {
+                p = (Protocol)reader.ReadByte();
+
+                if (p == Protocol.Connected)
+                {
+                    byte id = reader.ReadByte();
+                    string ip = reader.ReadString();
+                    MessageBox.Show(string.Format("Player Connected: {0}  The IP address is: {1}", id, ip));
+                }
+                else if (p == Protocol.Disconnected)
+                {
+                    byte id = reader.ReadByte();
+                    string ip = reader.ReadString();
+                    MessageBox.Show(string.Format("Player Disconnected: {0}  The IP address is: {1}", id, ip));
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+        }
+
+        #endregion
 
         /// <summary>
         /// This is called when the game should draw itself.
