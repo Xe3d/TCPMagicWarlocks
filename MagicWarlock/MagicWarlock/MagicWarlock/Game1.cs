@@ -43,7 +43,7 @@ namespace MagicWarlock
         GameStates GameState;
 
         //skapar en playermanager
-        PlayerManager Player;
+        PlayerManager Player, Enemy;
 
         //skapar en shootmanager till spelarens playermanager
         ShootManager playerShootManager;
@@ -139,10 +139,10 @@ namespace MagicWarlock
             #region Network
             client = new TcpClient();
             client.NoDelay = true;
-         //   client.Connect(IP, PORT);
+            client.Connect(IP, PORT);
 
             readBuffer = new byte[BUFFER_SIZE];
-         //   client.GetStream().BeginRead(readBuffer, 0, BUFFER_SIZE, StreamReceived, null);
+            client.GetStream().BeginRead(readBuffer, 0, BUFFER_SIZE, StreamReceived, null);
 
             readStream = new MemoryStream();
 
@@ -352,7 +352,12 @@ namespace MagicWarlock
                 //uppdatera explosionManagern, som tar hand om alla explosioner, som i mitt spel agerar blodmoln
                 explosionManager.Update(gameTime);
 
-                //uppdaterar enemyManagern, som tar hand om alla fiender
+                if (Enemy != null)
+                {
+                    Enemy.Update(gameTime);
+                    Enemy.handleSpriteMovement(gameTime);
+                }
+            /*    //uppdaterar enemyManagern, som tar hand om alla fiender
                 enemyManager.Update(gameTime);
 
                 //uppdaterar collisionManager, som tar hand om alla collisioner mellan objekt
@@ -365,7 +370,7 @@ namespace MagicWarlock
                 enemyLife.Update(gameTime);
 
                 //rensar tempEnemyLife för att få antalet liv alla fiender just nu
-                tempEnemyLife = 0;
+                tempEnemyLife = 0;*/
             }
 
             prevKeyboard = keyboard;
@@ -434,13 +439,15 @@ namespace MagicWarlock
                 {
                     byte id = reader.ReadByte();
                     string ip = reader.ReadString();
-                    MessageBox.Show(string.Format("Player Connected: {0}  The IP address is: {1}", id, ip));
+                    Enemy = new PlayerManager(Content.Load<Texture2D>("Assets/img/runer"), 1, 32, 48, screenRect, enemyShootManager, Content.Load<SoundEffect>(@"Assets/sfx/skjut"));
+                    Enemy.Position = new Vector2(180, 300);
+                
                 }
                 else if (p == Protocol.Disconnected)
                 {
                     byte id = reader.ReadByte();
                     string ip = reader.ReadString();
-                    MessageBox.Show(string.Format("Player Disconnected: {0}  The IP address is: {1}", id, ip));
+                    Enemy = null;
                 }
             }
             catch (Exception ex)
@@ -475,11 +482,17 @@ namespace MagicWarlock
                 }
                 
                 //Rita ut spelaren, spelarens liv, fienderna, fiendernas liv, och explosionerna
+                if(Enemy != null)
+                Enemy.Draw(spriteBatch);
+
+                
                 Player.Draw(spriteBatch);
                 playerLife.Draw(spriteBatch);
                 enemyLife.Draw(spriteBatch);
                 enemyManager.Draw(spriteBatch);
                 explosionManager.Draw(spriteBatch);
+
+                
             }
                 //om spelet är på menyskärmen
             else if (GameState == GameStates.menuScreen)
@@ -511,7 +524,7 @@ namespace MagicWarlock
 
             //initiera player och sätt dess position till 300, 300
             Player = new PlayerManager(Content.Load<Texture2D>("Assets/img/runer"), 1, 32, 48, screenRect, playerShootManager, Content.Load<SoundEffect>(@"Assets/sfx/skjut"));
-            Player.Position = new Vector2(300, 300);
+            Player.Position = new Vector2(540, 300);
 
             //initiera enemyShootManager
             enemyShootManager = new ShootManager(Content.Load<Texture2D>("Assets/img/Shots"), new Rectangle(256, 48, 32, 48), 1, 16, 250f, screenRect);
