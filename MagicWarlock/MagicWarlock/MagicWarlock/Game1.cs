@@ -46,7 +46,7 @@ namespace MagicWarlock
         PlayerManager Player, Enemy;
 
         //skapar en shootmanager till spelarens playermanager
-        ShootManager playerShootManager;
+        ShootManager playerShootManager, testManager;
 
         //initerar en enemymanager
         EnemyManager enemyManager;
@@ -111,8 +111,10 @@ namespace MagicWarlock
         int BUFFER_SIZE = 2048;
         byte[] readBuffer;
 
-        MemoryStream readStream;
+        MemoryStream readStream, writeStream;
+
         BinaryReader reader;
+        BinaryWriter writer;
 
         #endregion
 
@@ -137,16 +139,13 @@ namespace MagicWarlock
             // TODO: Add your initialization logic here
 
             #region Network
-            client = new TcpClient();
-            client.NoDelay = true;
-            client.Connect(IP, PORT);
-
-            readBuffer = new byte[BUFFER_SIZE];
-            client.GetStream().BeginRead(readBuffer, 0, BUFFER_SIZE, StreamReceived, null);
+           
 
             readStream = new MemoryStream();
+            writeStream = new MemoryStream();
 
             reader = new BinaryReader(readStream);
+            writer = new BinaryWriter(writeStream);
             #endregion
             //kallar Microsoft.Xna.Framework.Game.Initialize
             base.Initialize();
@@ -257,6 +256,15 @@ namespace MagicWarlock
             //gör så att man ser muspekaren
             IsMouseVisible = true;
 
+
+            client = new TcpClient();
+            client.NoDelay = true;
+            client.Connect(IP, PORT);
+
+            readBuffer = new byte[BUFFER_SIZE];
+            client.GetStream().BeginRead(readBuffer, 0, BUFFER_SIZE, StreamReceived, null);
+
+
            
         }
 
@@ -313,9 +321,14 @@ namespace MagicWarlock
             //om spelet är på spelskärmen playScreen gör dessa saker
             if (GameState == GameStates.playScreen)
             {
-                //om höger musknapp trycks ner, säg åt spelaren att gå till musens koordinater genom PlayerManager.goTo funktionen
-                if (mouse.RightButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed)
-                    Player.goTo(new Vector2(mouse.X, mouse.Y));
+                Vector2 iPos = Player.Position;
+
+                if (screenRect.Contains(mouse.X, mouse.Y))
+                {
+                    //om höger musknapp trycks ner, säg åt spelaren att gå till musens koordinater genom PlayerManager.goTo funktionen
+                    if (mouse.RightButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed)
+                        Player.goTo(new Vector2(mouse.X, mouse.Y));
+                }
 
                 //om vänster musknapp trycks ner, säg åt spelaren att skjuta mot musens koordinater genom PlayerManager.FireShot funktionen
                 if (mouse.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed)
@@ -357,7 +370,7 @@ namespace MagicWarlock
                     Enemy.Update(gameTime);
                     Enemy.handleSpriteMovement(gameTime);
                 }
-            /*    //uppdaterar enemyManagern, som tar hand om alla fiender
+           /*     //uppdaterar enemyManagern, som tar hand om alla fiender
                 enemyManager.Update(gameTime);
 
                 //uppdaterar collisionManager, som tar hand om alla collisioner mellan objekt
@@ -371,6 +384,21 @@ namespace MagicWarlock
 
                 //rensar tempEnemyLife för att få antalet liv alla fiender just nu
                 tempEnemyLife = 0;*/
+
+                Vector2 nPos = Player.Position;
+
+                Vector2 deltaPos = Vector2.Subtract(nPos, iPos);
+
+                if (deltaPos != Vector2.Zero)
+                {
+                    writeStream.Position = 0;
+                    writer.Write((byte)Protocol.PlayerMoved);
+                    writer.Write(nPos.X);
+                    writer.Write(nPos.Y);
+                    writer.Write(Player.rotation);
+                    SendData(GetDataFromMemoryStream(writeStream));
+                }
+
             }
 
             prevKeyboard = keyboard;
@@ -439,9 +467,30 @@ namespace MagicWarlock
                 {
                     byte id = reader.ReadByte();
                     string ip = reader.ReadString();
-                    Enemy = new PlayerManager(Content.Load<Texture2D>("Assets/img/runer"), 1, 32, 48, screenRect, enemyShootManager, Content.Load<SoundEffect>(@"Assets/sfx/skjut"));
-                    Enemy.Position = new Vector2(180, 300);
+                    if (Enemy == null)
+                    {
+                        testManager = new ShootManager(Content.Load<Texture2D>("Assets/img/Shots"), new Rectangle(256, 48, 32, 48), 1, 16, 250f, screenRect);
+
+                        Enemy = new PlayerManager(Content.Load<Texture2D>("Assets/img/runer"), 1, 32, 48, screenRect, testManager, Content.Load<SoundEffect>(@"Assets/sfx/skjut"));
+                        Enemy.Position = new Vector2(180, 300);
+
+                        writeStream.Position = 0;
+
+                        writer.Write((byte)Protocol.Connected);
+                        SendData(GetDataFromMemoryStream(writeStream));
+                    }
                 
+                }
+                else if (p == Protocol.PlayerMoved)
+                {
+                    float pX = reader.ReadSingle();
+                    float pY = reader.ReadSingle();
+                    float pRotation = reader.ReadSingle();
+                    byte id = reader.ReadByte();
+                    string ip = reader.ReadString();
+                    Enemy.position = new Vector2(pX, pY);
+                    Enemy.rotation = pRotation;
+
                 }
                 else if (p == Protocol.Disconnected)
                 {
@@ -455,6 +504,51 @@ namespace MagicWarlock
                 MessageBox.Show(ex.Message);
             }
         }
+
+
+        /// <summary>
+        /// Converts a MemoryStream to a byte array
+        /// </summary>
+        /// <param name="ms">MemoryStream to convert</param>
+        /// <returns>Byte array representation of the data</returns>
+        private byte[] GetDataFromMemoryStream(MemoryStream ms)
+        {
+            byte[] result;
+
+            //Async method called this, so lets lock the object to make sure other threads/async calls need to wait to use it.
+            lock (ms)
+            {
+                int bytesWritten = (int)ms.Position;
+                result = new byte[bytesWritten];
+
+                ms.Position = 0;
+                ms.Read(result, 0, bytesWritten);
+            }
+
+            return result;
+        }
+
+
+        /// <summary>
+        /// Code to actually send the data to the client
+        /// </summary>
+        /// <param name="b">Data to send</param>
+        public void SendData(byte[] b)
+        {
+            //Try to send the data.  If an exception is thrown, disconnect the client
+            try
+            {
+                lock (client.GetStream())
+                {
+                    client.GetStream().BeginWrite(b, 0, b.Length, null, null);
+                }
+            }
+            catch (Exception e)
+            {
+                
+            }
+        }
+
 
         #endregion
 
@@ -527,11 +621,11 @@ namespace MagicWarlock
             Player.Position = new Vector2(540, 300);
 
             //initiera enemyShootManager
-            enemyShootManager = new ShootManager(Content.Load<Texture2D>("Assets/img/Shots"), new Rectangle(256, 48, 32, 48), 1, 16, 250f, screenRect);
+           enemyShootManager = new ShootManager(Content.Load<Texture2D>("Assets/img/Shots"), new Rectangle(256, 48, 32, 48), 1, 16, 250f, screenRect);
 
             //initiera enemyManager
             enemyManager = new EnemyManager(Content.Load<Texture2D>("Assets/img/Shots"), new Rectangle(64, 48, 32, 16), 5, Player, screenRect, enemyShootManager, Content.Load<SoundEffect>(@"Assets/sfx/skjut"));
-
+            
             //skapa och inititera en random vid namn rand
             Random rand = new Random();
 

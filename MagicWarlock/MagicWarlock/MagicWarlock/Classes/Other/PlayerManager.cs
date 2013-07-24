@@ -30,7 +30,7 @@ namespace tools_spritesheet
         Rectangle screenBounds;
         int numOfFrames;
         Rectangle Rect;
-        float rotation;
+        public float rotation;
         public bool Destroyed = false;
         public int CollisionRadius = 20;
         
