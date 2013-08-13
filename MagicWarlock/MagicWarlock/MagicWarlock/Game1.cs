@@ -101,12 +101,14 @@ namespace MagicWarlock
         #endregion
 
 
+        
+
 
         #region Network
 
         TcpClient client;
 
-        String IP = "127.0.0.1";
+        String IP = "78.82.166.121";
         int PORT = 1490;
         int BUFFER_SIZE = 2048;
         byte[] readBuffer;
@@ -236,6 +238,14 @@ namespace MagicWarlock
             //skapar en ny spriteBatch, som används för att rita ut objekt
             spriteBatch = new SpriteBatch(GraphicsDevice);
 
+            client = new TcpClient();
+            client.NoDelay = true;
+            
+                client.Connect(IP, PORT);
+           
+            readBuffer = new byte[BUFFER_SIZE];
+            client.GetStream().BeginRead(readBuffer, 0, BUFFER_SIZE, StreamReceived, null);
+
             //Skapar en ny färgvariabel, kallad TardisBlue, med ett rgb värde av 0, 59, 111
             TardisBlue = new Color(0, 59, 111);
 
@@ -257,12 +267,7 @@ namespace MagicWarlock
             IsMouseVisible = true;
 
 
-            client = new TcpClient();
-            client.NoDelay = true;
-            client.Connect(IP, PORT);
-
-            readBuffer = new byte[BUFFER_SIZE];
-            client.GetStream().BeginRead(readBuffer, 0, BUFFER_SIZE, StreamReceived, null);
+          
 
 
            
@@ -329,13 +334,14 @@ namespace MagicWarlock
                     if (mouse.RightButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed)
                         Player.goTo(new Vector2(mouse.X, mouse.Y));
                 }
-
-                //om vänster musknapp trycks ner, säg åt spelaren att skjuta mot musens koordinater genom PlayerManager.FireShot funktionen
-                if (mouse.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed)
+                if (screenRect.Contains(mouse.X, mouse.Y))
                 {
-                    Player.FireShot(new Vector2(mouse.X, mouse.Y));
+                    //om vänster musknapp trycks ner, säg åt spelaren att skjuta mot musens koordinater genom PlayerManager.FireShot funktionen
+                    if (mouse.LeftButton == Microsoft.Xna.Framework.Input.ButtonState.Pressed)
+                    {
+                        Player.FireShot(new Vector2(mouse.X, mouse.Y));
+                    }
                 }
-
                 //sätt höjden på spelarens livmätare till antalet liv gånger 30px
                 playerLife.screenHeight = Player.life * 30;
 
@@ -400,7 +406,7 @@ namespace MagicWarlock
                 }
 
             }
-
+            
             prevKeyboard = keyboard;
             //kallar Microsoft.Xna.Framework.Game.Update
             base.Update(gameTime);
@@ -467,12 +473,18 @@ namespace MagicWarlock
                 {
                     byte id = reader.ReadByte();
                     string ip = reader.ReadString();
+                    
                     if (Enemy == null)
                     {
                         testManager = new ShootManager(Content.Load<Texture2D>("Assets/img/Shots"), new Rectangle(256, 48, 32, 48), 1, 16, 250f, screenRect);
 
                         Enemy = new PlayerManager(Content.Load<Texture2D>("Assets/img/runer"), 1, 32, 48, screenRect, testManager, Content.Load<SoundEffect>(@"Assets/sfx/skjut"));
                         Enemy.Position = new Vector2(180, 300);
+
+                        if (Player==null)
+                        {
+                            Enemy.position = new Vector2(540, 300);
+                        }
 
                         writeStream.Position = 0;
 
@@ -618,7 +630,14 @@ namespace MagicWarlock
 
             //initiera player och sätt dess position till 300, 300
             Player = new PlayerManager(Content.Load<Texture2D>("Assets/img/runer"), 1, 32, 48, screenRect, playerShootManager, Content.Load<SoundEffect>(@"Assets/sfx/skjut"));
-            Player.Position = new Vector2(540, 300);
+            if (Enemy == null)
+            {
+                Player.Position = new Vector2(540, 300);
+            }
+            else if (Enemy != null)
+            {
+                Player.Position = new Vector2(180, 300);
+            }
 
             //initiera enemyShootManager
            enemyShootManager = new ShootManager(Content.Load<Texture2D>("Assets/img/Shots"), new Rectangle(256, 48, 32, 48), 1, 16, 250f, screenRect);
